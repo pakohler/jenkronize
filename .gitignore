@@ -1,0 +1,5 @@
+config.yaml
+log.txt
+state.json
+*.exe
+Jenkronize
