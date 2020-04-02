@@ -83,7 +83,7 @@ func (j *JenkinsAPIClient) DownloadFile(urlPath string, destDir string) error {
 	fileName := urlSplit[len(urlSplit)-1]
 	filePath := path.Join(destDir, fileName)
 	if _, err := os.Stat(destDir); os.IsNotExist(err) {
-		os.MkdirAll(destDir, os.ModeDir)
+		os.MkdirAll(destDir, 0700)
 	}
 	j.log.Info.Print("Download starting: " + url)
 	// since some artifacts are large and connections are unstable, we'll use

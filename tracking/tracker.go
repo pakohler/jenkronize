@@ -13,6 +13,18 @@ import (
 	"time"
 )
 
+type comboError struct {
+	errorSet []error
+}
+
+func (c *comboError) Error() string {
+	str := "Multi-Error combination:\n"
+	for _, e := range c.errorSet {
+		str += e.Error() + "\n"
+	}
+	return str
+}
+
 type Tracker struct {
 	client      *jenkins.JenkinsAPIClient
 	log         *logging.Logger
@@ -140,16 +152,20 @@ func (h *Tracker) handleNewBuild(job *TrackedJob, newBuild *jenkins.Build) error
 	for _, artifactUrl := range artifacts {
 		downloadChannels = append(downloadChannels, h.handleNewArtifact(job.GetName(), artifactUrl))
 	}
+	errorSet := []error{}
 	// wait for all downloads to complete
 	for _, c := range downloadChannels {
 		err := <-c
 		if err != nil {
+			errorSet = append(errorSet, err)
 			h.notify(err.Error())
 			h.log.Error.Print(err.Error())
 		}
 	}
-	// return last error, which may or may not be nil
-	return err
+	if len(errorSet) > 0 {
+		return &comboError{errorSet: errorSet}
+	}
+	return nil
 }
 
 func (h *Tracker) handleNewArtifact(job string, url string) <-chan error {
