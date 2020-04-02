@@ -3,8 +3,8 @@ package jenkins
 import (
 	"crypto/tls"
 	"encoding/json"
+	"github.com/cavaliercoder/grab"
 	"github.com/pakohler/jenkronize/logging"
-	"io"
 	"io/ioutil"
 	"net/http"
 	"os"
@@ -14,6 +14,7 @@ import (
 
 type JenkinsAPIClient struct {
 	http     *http.Client
+	grab     *grab.Client
 	baseUrl  string
 	user     string
 	password string
@@ -27,8 +28,10 @@ func New() *JenkinsAPIClient {
 	}
 	j := JenkinsAPIClient{
 		http: &http.Client{Transport: transport},
+		grab: grab.NewClient(),
 		log:  logging.GetLogger(),
 	}
+	j.grab.HTTPClient = j.http
 	return &j
 }
 
@@ -82,33 +85,19 @@ func (j *JenkinsAPIClient) DownloadFile(urlPath string, destDir string) error {
 	if _, err := os.Stat(destDir); os.IsNotExist(err) {
 		os.MkdirAll(destDir, os.ModeDir)
 	}
-	out, err := os.Create(filePath)
-	if err != nil {
-		err = newJenkinsError("creation of "+filePath+" failed", err)
+	j.log.Info.Print("Download starting: " + url)
+	// since some artifacts are large and connections are unstable, we'll use
+	// `grab` with auto-resume enabled for the actual download
+	grabReq, _ := grab.NewRequest(filePath, url)
+	grabReq.HTTPRequest.SetBasicAuth(j.user, j.password)
+	resp := j.grab.Do(grabReq)
+	<-resp.Done
+	if err := resp.Err(); err != nil {
+		err = newJenkinsError("Download failed: "+url, err)
 		j.log.Error.Print(err.Error())
 		return err
 	}
-	defer out.Close()
-	req, err := http.NewRequest("GET", url, nil)
-	req.SetBasicAuth(j.user, j.password)
-	resp, err := j.http.Do(req)
-	if err != nil {
-		err = newJenkinsError("Request to "+url+" failed", err)
-		j.log.Error.Print(err.Error())
-		return err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		err = newJenkinsError("Download of "+url+" had a bad status: "+resp.Status, nil)
-		j.log.Error.Print(err.Error())
-		return err
-	}
-	_, err = io.Copy(out, resp.Body)
-	if err != nil {
-		err = newJenkinsError("Download of "+url+" failed", err)
-		j.log.Error.Print(err.Error())
-		return err
-	}
+	j.log.Info.Print("Download complete: " + url)
 	return nil
 }
 

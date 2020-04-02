@@ -55,6 +55,9 @@ logfile: /opt/jenkins-sync/jenkronize.log
 
 Builds are currently using Go version 1.12.9
 
-The only external dependency is `github.com/go-yaml/yaml`, which can be installed with `go get github.com/go-yaml/yaml`
+External dependencies include:
+- `github.com/go-yaml/yaml`
+- `github.com/cavaliercoder/grab`
+They can be installed with eg. `go get github.com/go-yaml/yaml`
 
 Once the dependencies are installed, simply `cd` into the top-level directory of the repository and `go build .`

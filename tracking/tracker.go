@@ -154,7 +154,6 @@ func (h *Tracker) handleNewBuild(job *TrackedJob, newBuild *jenkins.Build) error
 
 func (h *Tracker) handleNewArtifact(job string, url string) <-chan error {
 	ch := make(chan error)
-	h.log.Info.Printf("%s artifact: %s", job, url)
 	go func() {
 		err := h.client.DownloadFile(url, h.trackedJobs[job].SyncDir)
 		ch <- err
