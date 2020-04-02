@@ -1,7 +1,7 @@
 package tracking
 
 import (
-	"github.com/pakohler/Jenkronize/jenkins"
+	"github.com/pakohler/jenkronize/jenkins"
 	"strings"
 )
 

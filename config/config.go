@@ -2,9 +2,9 @@ package config
 
 import (
 	"github.com/go-yaml/yaml"
-	"github.com/pakohler/Jenkronize/common"
-	"github.com/pakohler/Jenkronize/logging"
-	"github.com/pakohler/Jenkronize/tracking"
+	"github.com/pakohler/jenkronize/common"
+	"github.com/pakohler/jenkronize/logging"
+	"github.com/pakohler/jenkronize/tracking"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -26,9 +26,15 @@ type TrackerConfig struct {
 	TrackedJobs []*tracking.TrackedJob
 }
 
+type SlackConfig struct {
+	Webhook string
+	Channel string
+}
+
 type Config struct {
 	Jenkins JenkinsConfig
 	Tracker TrackerConfig
+	Slack   SlackConfig
 	LogFile string
 	log     *logging.Logger
 }
@@ -49,6 +55,10 @@ func (c *Config) setDefaultValues() *Config {
 		TrackedJobs: []*tracking.TrackedJob{
 			tracking.NewTrackedJob("/job/SomeProject/job/Build/job/ABranchOrSomething", "/path/to/dir/to/cache/artifacts"),
 		},
+	}
+	c.Slack = SlackConfig{
+		Webhook: "https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXXXXXX",
+		Channel: "#jenkronize",
 	}
 	c.log = logging.GetLogger()
 	dir := filepath.Dir(c.getFilePath())

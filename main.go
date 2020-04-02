@@ -1,9 +1,10 @@
 package main
 
 import (
-	"github.com/pakohler/Jenkronize/config"
-	"github.com/pakohler/Jenkronize/jenkins"
-	"github.com/pakohler/Jenkronize/tracking"
+	"github.com/pakohler/jenkronize/config"
+	"github.com/pakohler/jenkronize/jenkins"
+	"github.com/pakohler/jenkronize/notifications"
+	"github.com/pakohler/jenkronize/tracking"
 )
 
 func main() {
@@ -19,6 +20,14 @@ func main() {
 		Init().
 		SetClient(leeroy).
 		SetInterval(conf.Tracker.Interval.String())
+
+	if conf.Slack.Webhook != "" {
+		slack := notifications.NewSlackNotifier(conf.Slack.Webhook)
+		if conf.Slack.Channel != "" {
+			slack.SetChannel(conf.Slack.Channel)
+		}
+		tracker.AddNotifier(slack)
+	}
 
 	for _, job := range conf.Tracker.TrackedJobs {
 		tracker.Track(job)

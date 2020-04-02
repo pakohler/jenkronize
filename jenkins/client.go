@@ -3,7 +3,7 @@ package jenkins
 import (
 	"crypto/tls"
 	"encoding/json"
-	"github.com/pakohler/Jenkronize/logging"
+	"github.com/pakohler/jenkronize/logging"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -64,7 +64,9 @@ func (j *JenkinsAPIClient) getJson(urlPath string) ([]byte, error) {
 	req.SetBasicAuth(j.user, j.password)
 	resp, err := j.http.Do(req)
 	if err != nil {
-		return nil, err
+		err = newJenkinsError("Request to "+url+" failed", err)
+		j.log.Error.Print(err.Error())
+		return []byte{}, err
 	}
 	defer resp.Body.Close()
 	j.log.Info.Print("attempting to read response from " + url)
@@ -72,7 +74,7 @@ func (j *JenkinsAPIClient) getJson(urlPath string) ([]byte, error) {
 	return body, err
 }
 
-func (j *JenkinsAPIClient) DownloadFile(urlPath string, destDir string) {
+func (j *JenkinsAPIClient) DownloadFile(urlPath string, destDir string) error {
 	url := j.cleanUrl(urlPath)
 	urlSplit := strings.Split(url, "/")
 	fileName := urlSplit[len(urlSplit)-1]
@@ -82,57 +84,69 @@ func (j *JenkinsAPIClient) DownloadFile(urlPath string, destDir string) {
 	}
 	out, err := os.Create(filePath)
 	if err != nil {
-		j.log.Fatal.Fatal(err)
+		err = newJenkinsError("creation of "+filePath+" failed", err)
+		j.log.Error.Print(err.Error())
+		return err
 	}
 	defer out.Close()
 	req, err := http.NewRequest("GET", url, nil)
 	req.SetBasicAuth(j.user, j.password)
 	resp, err := j.http.Do(req)
 	if err != nil {
-		j.log.Fatal.Fatal(err)
+		err = newJenkinsError("Request to "+url+" failed", err)
+		j.log.Error.Print(err.Error())
+		return err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		j.log.Error.Printf("Download of %s had a bad status: %s", url, resp.Status)
-		return
+		err = newJenkinsError("Download of "+url+" had a bad status: "+resp.Status, nil)
+		j.log.Error.Print(err.Error())
+		return err
 	}
 	_, err = io.Copy(out, resp.Body)
 	if err != nil {
-		j.log.Error.Printf("Download of %s failed: %v", url, err)
+		err = newJenkinsError("Download of "+url+" failed", err)
+		j.log.Error.Print(err.Error())
+		return err
 	}
+	return nil
 }
 
-func (j *JenkinsAPIClient) GetLastSuccessfulBuildForJob(jobPath string) *Build {
+func (j *JenkinsAPIClient) GetLastSuccessfulBuildForJob(jobPath string) (*Build, error) {
 	j.log.Info.Print("Attempting to get the last successful build for " + jobPath)
 	resp, err := j.getJson(jobPath)
 	if err != nil {
-		j.log.Fatal.Fatal(err)
+		j.log.Error.Print(err.Error())
+		return nil, err
 	}
 	var job Job
 	err = json.Unmarshal(resp, &job)
 	if err != nil {
-		j.log.Fatal.Print(string(resp))
-		j.log.Fatal.Fatal(err)
+		err = newJenkinsError(string(resp), err)
+		j.log.Error.Print(err.Error())
+		return nil, err
 	}
-	return job.LastSuccessfulBuild
+	return job.LastSuccessfulBuild, nil
 }
 
-func (j *JenkinsAPIClient) GetArtifactUrlsFromBuild(buildPath string) []string {
+func (j *JenkinsAPIClient) GetArtifactUrlsFromBuild(buildPath string) ([]string, error) {
 	j.log.Info.Print("attempting to get artifact URLs from " + buildPath)
+	artifactUrls := []string{}
 	resp, err := j.getJson(buildPath)
 	if err != nil {
-		j.log.Fatal.Fatal(err)
+		j.log.Error.Print(err)
+		return []string{}, err
 	}
 	var build JobBuild
 	err = json.Unmarshal(resp, &build)
 	if err != nil {
-		j.log.Fatal.Print(string(resp))
-		j.log.Fatal.Fatal(err)
+		err = newJenkinsError(string(resp), err)
+		j.log.Error.Print(err.Error())
+		return []string{}, err
 	}
-	var artifactUrls []string
 	for _, artifact := range build.Artifacts {
 		url := build.Url + "artifact/" + artifact.RelativePath
 		artifactUrls = append(artifactUrls, url)
 	}
-	return artifactUrls
+	return artifactUrls, nil
 }
