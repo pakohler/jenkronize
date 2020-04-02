@@ -2,4 +2,4 @@ config.yaml
 log.txt
 state.json
 *.exe
-jenkronize
+jenkronize*
