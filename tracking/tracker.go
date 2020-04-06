@@ -9,7 +9,10 @@ import (
 	"github.com/pakohler/jenkronize/notifications"
 	"io/ioutil"
 	"os"
+	"path"
 	"path/filepath"
+	"strings"
+	"sync"
 	"time"
 )
 
@@ -31,12 +34,15 @@ type Tracker struct {
 	trackedJobs map[string]*TrackedJob
 	interval    time.Duration
 	notifiers   []notifications.Notifier
+	mux         sync.Mutex
+	dns         bool
 }
 
 func (h *Tracker) Init() *Tracker {
 	h.log = logging.GetLogger()
 	h.trackedJobs = map[string]*TrackedJob{}
 	h.notifiers = []notifications.Notifier{}
+	h.dns = true
 	return h
 }
 
@@ -88,21 +94,37 @@ func (h *Tracker) notify(msg string) {
 func (h *Tracker) TrackJob(job *TrackedJob) {
 	for {
 		currentBuild, err := h.client.GetLastSuccessfulBuildForJob(job.GetName())
+		h.mux.Lock()
 		if err != nil {
-			h.notify(err.Error())
 			h.log.Error.Print(err.Error())
-			currentBuild = nil
-		}
-		if currentBuild == nil {
+			if strings.Contains(err.Error(), "dial tcp: lookup") {
+				// special handling for common DNS issues
+				if h.dns {
+					// We'll only send notifications when we used to be able to reach the host,
+					// but can't now, to avoid being too spammy.
+					h.notify(fmt.Sprintf(
+						"DNS lookup failed for Jenkins server %s - check your VPN, DNS, or network connectivity",
+						h.client.GetBaseUrl(),
+					))
+				}
+				h.dns = false
+			} else {
+				// send notifications of the error message
+				h.notify(err.Error())
+			}
 			// we'll wait the interval out and try again.
+			h.mux.Unlock()
 			time.Sleep(h.interval)
 			continue
 		}
+		// if we got here, we know we can reach the host.
+		h.dns = true
+		h.mux.Unlock()
 		if currentBuild.Number > job.BuildNumber() {
 			msg := fmt.Sprintf(
-				"New build number %d for %s detected - last tracked was %d. Downloading artifacts...",
+				"%s - new build number %d detected - last tracked was %d. Downloading artifacts...",
+				job.GetAlias(),
 				currentBuild.Number,
-				job.GetName(),
 				job.BuildNumber(),
 			)
 			h.notify(msg)
@@ -111,8 +133,8 @@ func (h *Tracker) TrackJob(job *TrackedJob) {
 			// set and save the build state _after_ the artifacts are synced so they can be retried if something crashes
 			if err != nil {
 				msg = fmt.Sprintf(
-					"Artifact download for tracked job %s's build number %d failed on one or more artifacts; will retry after wait interval.",
-					job.GetName(),
+					"%s - artifact download for build number %d failed on one or more artifacts; will retry after wait interval.",
+					job.GetAlias(),
 					job.BuildNumber(),
 				)
 				h.log.Error.Print(msg)
@@ -120,8 +142,8 @@ func (h *Tracker) TrackJob(job *TrackedJob) {
 			} else {
 				job.SetBuild(currentBuild)
 				msg = fmt.Sprintf(
-					"Completed downloading artifacts for tracked job %s's build number %d.",
-					job.GetName(),
+					"%s - completed downloading artifacts for build number %d.",
+					job.GetAlias(),
 					job.BuildNumber(),
 				)
 				h.notify(msg)
@@ -130,9 +152,9 @@ func (h *Tracker) TrackJob(job *TrackedJob) {
 			}
 		} else {
 			h.log.Info.Printf(
-				"last observed build number %d for %s is up-to-date; no action required.",
+				"%s - last observed build number %d is up-to-date; no action required.",
+				job.GetAlias(),
 				currentBuild.Number,
-				job.GetName(),
 			)
 		}
 		time.Sleep(h.interval)
@@ -150,7 +172,7 @@ func (h *Tracker) handleNewBuild(job *TrackedJob, newBuild *jenkins.Build) error
 	// or `nil` if the download was successful
 	downloadChannels := make([]<-chan error, 0)
 	for _, artifactUrl := range artifacts {
-		downloadChannels = append(downloadChannels, h.handleNewArtifact(job.GetName(), artifactUrl))
+		downloadChannels = append(downloadChannels, h.handleNewArtifact(job.GetName(), newBuild.Number, artifactUrl))
 	}
 	errorSet := []error{}
 	// wait for all downloads to complete
@@ -168,10 +190,11 @@ func (h *Tracker) handleNewBuild(job *TrackedJob, newBuild *jenkins.Build) error
 	return nil
 }
 
-func (h *Tracker) handleNewArtifact(job string, url string) <-chan error {
+func (h *Tracker) handleNewArtifact(job string, build int32, url string) <-chan error {
 	ch := make(chan error)
+	downloadDir := path.Join(h.trackedJobs[job].SyncDir, fmt.Sprintf("%d", build))
 	go func() {
-		err := h.client.DownloadFile(url, h.trackedJobs[job].SyncDir)
+		err := h.client.DownloadFile(url, downloadDir)
 		ch <- err
 	}()
 	return ch

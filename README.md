@@ -22,10 +22,13 @@ tracker:
   interval: 10m0s
   trackedjobs:
   - name: /job/installer/job/master
+    alias: installer
     sync_dir: /opt/jenkins-sync/installer
   - name: /job/database-access-layer/job/master
+    alias: DAL
     sync_dir: /opt/jenkins-sync/database-access-layer
   - name: /job/web-interface
+    alias: UI
     sync_dir: /opt/jenkins-sync/web-interface
 slack:
   webhook: https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXXXXXX
@@ -42,6 +45,7 @@ logfile: /opt/jenkins-sync/jenkronize.log
 - `interval`: the time to wait between checks for new builds. It uses Go's `time.Duration` format, eg `10s`, `2m` or `1m13s24ns` - see https://golang.org/pkg/time/#ParseDuration
 - `trackedjobs`: A list of Jenkins jobs you want to track and synchronize artifacts from. Each entry should include the following:
     - `name` should be the path after the Jenkins URL for the jobs you want to track; for example `/job/foo/job/bar`.
+    - `alias` (optional) can be whatever you want; it's used to make logs a bit more readable instead of referring to the job path all the time. If omitted, will default to be the job path.
     - `sync_dir` is path to the directory where you want to cache the artifacts from that job. If the dir doesn't exist, Jenkronize will attempt to create it.
 
 ### slack

@@ -53,7 +53,7 @@ func (c *Config) setDefaultValues() *Config {
 	c.Tracker = TrackerConfig{
 		Interval: defaultDuration,
 		TrackedJobs: []*tracking.TrackedJob{
-			tracking.NewTrackedJob("/job/SomeProject/job/Build/job/ABranchOrSomething", "/path/to/dir/to/cache/artifacts"),
+			tracking.NewTrackedJob("/job/SomeProject/job/Build/job/ABranchOrSomething", "SomeProject::ABranchOrSomething", "/path/to/dir/to/cache/artifacts"),
 		},
 	}
 	c.Slack = SlackConfig{

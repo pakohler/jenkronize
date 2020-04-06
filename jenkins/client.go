@@ -53,6 +53,10 @@ func (j *JenkinsAPIClient) SetBaseUrl(baseUrl string) *JenkinsAPIClient {
 	return j
 }
 
+func (j *JenkinsAPIClient) GetBaseUrl() string {
+	return j.baseUrl
+}
+
 func (j *JenkinsAPIClient) cleanUrl(urlPath string) string {
 	urlPath = strings.TrimRight(urlPath, "/")
 	urlPath = strings.ReplaceAll(urlPath, j.baseUrl, "")

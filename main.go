@@ -30,6 +30,7 @@ func main() {
 	}
 
 	for _, job := range conf.Tracker.TrackedJobs {
+		job.Init()
 		tracker.Track(job)
 	}
 

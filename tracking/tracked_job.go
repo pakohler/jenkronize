@@ -7,19 +7,30 @@ import (
 
 type TrackedJob struct {
 	Name    string         `yaml:"name"`
+	Alias   string         `yaml:"alias"`
 	Build   *jenkins.Build `yaml:"-" json:"build"`
 	SyncDir string         `yaml:"sync_dir"`
 }
 
-func NewTrackedJob(name string, syncDir string) *TrackedJob {
+func NewTrackedJob(name string, alias string, syncDir string) *TrackedJob {
 	name = strings.ToLower(name)
 	name = strings.TrimRight(name, "/")
 	t := TrackedJob{
 		Name:    name,
+		Alias:   alias,
 		SyncDir: syncDir,
-		Build:   &jenkins.Build{Number: 0},
 	}
+	t.Init()
 	return &t
+}
+
+func (t *TrackedJob) Init() {
+	if t.Alias == "" {
+		t.Alias = t.Name
+	}
+	if t.Build == nil {
+		t.Build = &jenkins.Build{Number: 0}
+	}
 }
 
 func (t *TrackedJob) SetBuild(new *jenkins.Build) *TrackedJob {
@@ -40,6 +51,10 @@ func (t *TrackedJob) BuildNumber() int32 {
 
 func (t *TrackedJob) GetName() string {
 	return t.Name
+}
+
+func (t *TrackedJob) GetAlias() string {
+	return t.Alias
 }
 
 func (t *TrackedJob) Equals(other *TrackedJob) bool {
