@@ -24,6 +24,10 @@ tracker:
   - name: /job/installer/job/master
     alias: installer
     sync_dir: /opt/jenkins-sync/installer
+    # How many extra builds to cache locally; older builds will get removed after the new one is downloaded.
+    # Set to a negative number to keep all builds (you may run out of disk space) or 0 to keep only the current build.
+    # Defaults to 0 if omitted.
+    builds_to_cache: 1
   - name: /job/database-access-layer/job/master
     alias: DAL
     sync_dir: /opt/jenkins-sync/database-access-layer

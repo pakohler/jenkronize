@@ -11,6 +11,8 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -36,6 +38,7 @@ type Tracker struct {
 	notifiers   []notifications.Notifier
 	mux         sync.Mutex
 	dns         bool
+	outofspace  bool
 }
 
 func (h *Tracker) Init() *Tracker {
@@ -96,22 +99,7 @@ func (h *Tracker) TrackJob(job *TrackedJob) {
 		currentBuild, err := h.client.GetLastSuccessfulBuildForJob(job.GetName())
 		h.mux.Lock()
 		if err != nil {
-			h.log.Error.Print(err.Error())
-			if strings.Contains(err.Error(), "dial tcp: lookup") {
-				// special handling for common DNS issues
-				if h.dns {
-					// We'll only send notifications when we used to be able to reach the host,
-					// but can't now, to avoid being too spammy.
-					h.notify(fmt.Sprintf(
-						"DNS lookup failed for Jenkins server %s - check your VPN, DNS, or network connectivity",
-						h.client.GetBaseUrl(),
-					))
-				}
-				h.dns = false
-			} else {
-				// send notifications of the error message
-				h.notify(err.Error())
-			}
+			h.handleApiError(job, err)
 			// we'll wait the interval out and try again.
 			h.mux.Unlock()
 			time.Sleep(h.interval)
@@ -132,13 +120,7 @@ func (h *Tracker) TrackJob(job *TrackedJob) {
 			err = h.handleNewBuild(job, currentBuild)
 			// set and save the build state _after_ the artifacts are synced so they can be retried if something crashes
 			if err != nil {
-				msg = fmt.Sprintf(
-					"%s - artifact download for build number %d failed on one or more artifacts; will retry after wait interval.",
-					job.GetAlias(),
-					job.BuildNumber(),
-				)
-				h.log.Error.Print(msg)
-				h.notify(msg)
+				h.handleArtifactErrors(job, err)
 			} else {
 				job.SetBuild(currentBuild)
 				msg = fmt.Sprintf(
@@ -159,6 +141,58 @@ func (h *Tracker) TrackJob(job *TrackedJob) {
 		}
 		time.Sleep(h.interval)
 	}
+}
+
+func (h *Tracker) handleApiError(job *TrackedJob, err error) {
+	h.log.Error.Print(err.Error())
+	if strings.Contains(err.Error(), "dial tcp: lookup") {
+		// special handling for common DNS issues
+		if h.dns {
+			// We'll only send notifications when we used to be able to reach the host,
+			// but can't now, to avoid being too spammy.
+			h.notify(fmt.Sprintf(
+				"DNS lookup failed for Jenkins server %s - check your VPN, DNS, or network connectivity",
+				h.client.GetBaseUrl(),
+			))
+		}
+		h.dns = false
+	} else if strings.Contains(err.Error(), "invalid character '<'") {
+		// we got HTML instead of JSON for some reason
+		h.notify(fmt.Sprintf(
+			"%s - received HTML instead of JSON when attempting to check for latest build via Jenkins API. This is usually an intermittent issue which should resolve itself. Will try again after interval.",
+			job.GetAlias(),
+		))
+	} else {
+		// send notifications of the error message
+		h.notify(err.Error())
+	}
+}
+
+func (h *Tracker) handleArtifactErrors(job *TrackedJob, err error) {
+	var msg string
+	if strings.Contains(err.Error(), "no space left on device") {
+		h.mux.Lock()
+		defer h.mux.Unlock()
+		if h.outofspace {
+			// we've already noticed we're out of disk space; no reason to keep spamming
+			return
+		}
+		h.outofspace = true
+		msg = fmt.Sprintf(
+			"%s - downloads failed due to disk being full; please clean up disk space and reduce builds_to_cache for job",
+			job.GetAlias(),
+		)
+		h.notify(msg)
+		h.log.Error.Print(err.Error())
+		h.log.Error.Print(msg)
+	}
+	msg = fmt.Sprintf(
+		"%s - artifact download for build number %d failed on one or more artifacts; will retry after wait interval.",
+		job.GetAlias(),
+		job.BuildNumber(),
+	)
+	h.log.Error.Print(msg)
+	h.notify(msg)
 }
 
 func (h *Tracker) handleNewBuild(job *TrackedJob, newBuild *jenkins.Build) error {
@@ -187,6 +221,7 @@ func (h *Tracker) handleNewBuild(job *TrackedJob, newBuild *jenkins.Build) error
 	if len(errorSet) > 0 {
 		return &comboError{errorSet: errorSet}
 	}
+	h.removeOutdatedBuilds(job)
 	return nil
 }
 
@@ -225,6 +260,46 @@ func (h *Tracker) saveState() {
 	file.Write(stateBytes)
 }
 
+func (h *Tracker) removeOutdatedBuilds(job *TrackedJob) {
+	if job.BuildsToCache < 0 {
+		// negative numbers mean we'll keep all the old jobs
+		return
+	}
+	items, err := ioutil.ReadDir(job.SyncDir)
+	if err != nil {
+		h.log.Error.Printf(
+			"Failed to list dir contents for %s: %v",
+			job.SyncDir,
+			err,
+		)
+		return
+	}
+	dirs := map[int]os.FileInfo{}
+	builds := []int{}
+	// filter for just dirs that are integers; these should be the build cache dirs
+	for _, item := range items {
+		if item.IsDir() {
+			dirInt, err := strconv.Atoi(item.Name())
+			dirInt32 := dirInt
+			if err != nil {
+				dirs[dirInt32] = item
+				builds = append(builds, dirInt32)
+			}
+		}
+	}
+	if len(builds) <= job.BuildsToCache+1 {
+		// we still have more builds to cache, so we don't need to purge anything
+		return
+	}
+	sort.Ints(builds)
+	for i, build := range builds {
+		h.log.Info.Printf("removing outdated build %d", build)
+		if i < job.BuildsToCache {
+			os.RemoveAll(path.Join(job.SyncDir, fmt.Sprintf("%d", build)))
+		}
+	}
+}
+
 func (h *Tracker) LoadState() {
 	file, err := h.getStateFile()
 	if err != nil {
@@ -240,6 +315,6 @@ func (h *Tracker) LoadState() {
 		return
 	}
 	for key, val := range tmpJobs {
-		h.trackedJobs[key] = val
+		h.trackedJobs[key].Build.Number = val.BuildNumber()
 	}
 }

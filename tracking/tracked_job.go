@@ -6,19 +6,21 @@ import (
 )
 
 type TrackedJob struct {
-	Name    string         `yaml:"name"`
-	Alias   string         `yaml:"alias"`
-	Build   *jenkins.Build `yaml:"-" json:"build"`
-	SyncDir string         `yaml:"sync_dir"`
+	Name          string         `yaml:"name"`
+	Alias         string         `yaml:"alias"`
+	Build         *jenkins.Build `yaml:"-" json:"build"`
+	SyncDir       string         `yaml:"sync_dir"`
+	BuildsToCache int            `yaml:buildsToCache`
 }
 
 func NewTrackedJob(name string, alias string, syncDir string) *TrackedJob {
 	name = strings.ToLower(name)
 	name = strings.TrimRight(name, "/")
 	t := TrackedJob{
-		Name:    name,
-		Alias:   alias,
-		SyncDir: syncDir,
+		Name:          name,
+		Alias:         alias,
+		SyncDir:       syncDir,
+		BuildsToCache: 1,
 	}
 	t.Init()
 	return &t
