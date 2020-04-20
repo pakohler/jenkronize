@@ -265,6 +265,7 @@ func (h *Tracker) removeOutdatedBuilds(job *TrackedJob) {
 		// negative numbers mean we'll keep all the old jobs
 		return
 	}
+	h.log.Info.Printf("Cleaning up old builds for %s", job.GetName())
 	items, err := ioutil.ReadDir(job.SyncDir)
 	if err != nil {
 		h.log.Error.Printf(
@@ -282,19 +283,21 @@ func (h *Tracker) removeOutdatedBuilds(job *TrackedJob) {
 			dirInt, err := strconv.Atoi(item.Name())
 			dirInt32 := dirInt
 			if err != nil {
-				dirs[dirInt32] = item
-				builds = append(builds, dirInt32)
+				continue
 			}
+			dirs[dirInt32] = item
+			builds = append(builds, dirInt32)
 		}
 	}
+	sort.Ints(builds)
+	h.log.Info.Printf("%s currently has the following builds cached: [%d]", job.GetName(), builds)
 	if len(builds) <= job.BuildsToCache+1 {
 		// we still have more builds to cache, so we don't need to purge anything
 		return
 	}
-	sort.Ints(builds)
 	for i, build := range builds {
-		h.log.Info.Printf("removing outdated build %d", build)
 		if i < job.BuildsToCache {
+			h.log.Info.Printf("removing outdated build %d", build)
 			os.RemoveAll(path.Join(job.SyncDir, fmt.Sprintf("%d", build)))
 		}
 	}
