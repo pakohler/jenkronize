@@ -298,7 +298,10 @@ func (h *Tracker) removeOutdatedBuilds(job *TrackedJob) {
 	for i, build := range builds {
 		if i < job.BuildsToCache {
 			h.log.Info.Printf("removing outdated build %d", build)
-			os.RemoveAll(path.Join(job.SyncDir, fmt.Sprintf("%d", build)))
+			err = os.RemoveAll(path.Join(job.SyncDir, fmt.Sprintf("%d", build)))
+			if err != nil {
+				h.log.Error.Printf("failed to remove build %d: %v", build, err)
+			}
 		}
 	}
 }
