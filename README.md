@@ -10,6 +10,10 @@ Simply run `./jenkronize` (on \*Nix systems) or `jenkronize.exe` (on Windows).
 If there is no preexisting `config.yaml` in the same dir as the executable, an example config will be generated.
 State (eg. last observed build) is stored in `state.json`; currently, if you remove tracked jobs from your config you must also delete them from your state file (or simply delete the state file altogether, though this would mean that other tracked jobs will have their artifacts downloaded again)
 
+### Docker
+
+The build script will also build a docker image, which you can use to launch jenkronize with an nginx file server via the docker-compose file included in this repository. You should make sure you've edited the docker-compose.yaml first to point to the correct jenkronize config.yaml file and `touch` the log file first.
+
 ## Configuration
 
 An example configuration:
@@ -61,11 +65,5 @@ logfile: /opt/jenkins-sync/jenkronize.log
 
 ## Building
 
-Builds are currently using Go version 1.12.9
-
-External dependencies include:
-- `github.com/go-yaml/yaml`
-- `github.com/cavaliercoder/grab`
-They can be installed with eg. `go get github.com/go-yaml/yaml`
-
-Once the dependencies are installed, simply `cd` into the top-level directory of the repository and `go build .`
+- You must have Go version 1.12.9 installed
+- Run `./build`

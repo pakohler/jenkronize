@@ -1,0 +1,35 @@
+version: "3.8"
+
+services:
+  jenkronize:
+    container_name: jenkronize
+    image: jenkronize:latest
+    volumes:
+      # These should be adjusted to suit your system.
+      # Make sure `config.yaml` and `log.txt` exist before running, or you'll get
+      # errors
+      - type: bind
+        source: ./config.yaml
+        target: /opt/jenkronize/config.yaml
+      - type: volume
+        source: jenkronize-data
+        target: /opt/jenkronize/data
+      - type: bind
+        source: ./log.txt
+        target: /opt/jenkronize/log.txt
+    dns:
+      - 127.0.0.1
+      - 1.1.1.1
+    restart: unless-stopped
+  nginx:
+    container_name: jenkronize-nginx
+    image: nginx:1.17.10-alpine
+    volumes:
+      - type: volume
+        source: jenkronize-data
+        target: /usr/share/nginx/html
+    ports:
+      - "9001:80"
+
+volumes:
+  jenkronize-data:

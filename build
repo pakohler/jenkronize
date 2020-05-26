@@ -1,0 +1,51 @@
+#!/bin/bash
+set -eEuxo pipefail
+
+function install_deps() {
+	go get \
+		github.com/go-yaml/yaml \
+		github.com/cavaliercoder/grab
+}
+
+function gofmt() {
+	for dir in $(find . -type d | grep -v git); do
+		go fmt ${dir}/*.go
+	done
+	go fmt *.go
+}
+
+function build_bin() {
+	OS_TYPES=(linux darwin windows)
+	ARCHITECTURES=(386 amd64)
+	for os in ${OS_TYPES[@]}; do
+		for arch in ${ARCHITECTURES[@]}; do
+			if [ "${os}" == "windows" ]; then
+				extension=".exe"
+			else
+				extension=""
+			fi
+			GOOS=${os} GOARCH=${arch} go build -o "$(basename $(pwd))-${os}-${arch}${extension}" .
+		done
+	done
+}
+
+function build_docker() {
+	local tags=(
+		-t "jenkronize:$(git log -n1 --format=format:"%H" | cut -c 1-8)"
+		-t "jenkronize:latest"
+	)
+	docker build ${tags[*]} .
+}
+
+function main() {
+	SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null && pwd)"
+	pushd "${SCRIPT_DIR}"
+	install_deps
+	gofmt
+	build_bin
+	build_docker
+	popd
+}
+
+main
+
